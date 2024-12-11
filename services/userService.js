@@ -7,7 +7,7 @@ class UserService {
   static CACHE_TTL = 3600; // 1 hour
 
   static generateCacheKey(userId) {
-    return `${this.USER_CACHE_PREFIX}${userId}`;
+    return `{user}:${userId}`;
   }
 
   static async getUserFromCache(userId) {
@@ -52,7 +52,7 @@ class UserService {
   }
 
   static async getUserByEmail(email) {
-    const cacheKey = `${this.USER_CACHE_PREFIX}email:${email}`;
+    const cacheKey = `{user}:email:${email}`;
     let userId = await redisClient.get(cacheKey);
 
     if (!userId) {
@@ -77,7 +77,7 @@ class UserService {
   }
 
   static async getUserByEmailWithPassword(email) {
-    const cacheKey = `${this.USER_CACHE_PREFIX}email_with_password:${email}`;
+    const cacheKey = `{user}:email_with_password:${email}`;
     let userId = await redisClient.get(cacheKey);
 
     if (!userId) {
@@ -106,8 +106,8 @@ class UserService {
     await user.save();
 
     // 2. 사용자 데이터를 캐싱
-    const emailKey = `${this.USER_CACHE_PREFIX}email:${user.email}`;
-    const emailWithPasswordKey = `${this.USER_CACHE_PREFIX}email_with_password:${user.email}`;
+    const emailKey = `{user}:email:${user.email}`;
+    const emailWithPasswordKey = `{user}:email_with_password:${user.email}`;
 
     // Redis 트랜잭션으로 캐싱 처리
     const pipeline = redisClient.pipeline(); // 클러스터, 로컬 모두 대응
