@@ -46,7 +46,7 @@ class SessionService {
       }
 
       if (ttl) {
-        await redisClient.setEx(key, ttl, jsonString);
+        await redisClient.set(key, jsonString, { ttl });
       } else {
         await redisClient.set(key, jsonString);
       }
@@ -71,9 +71,9 @@ class SessionService {
   static async createSession(userId, metadata = {}) {
     try {
       // 기존 세션들 모두 제거
-      await this.removeAllUserSessions(userId);
+      await SessionService.removeAllUserSessions(userId);
 
-      const sessionId = this.generateSessionId();
+      const sessionId = SessionService.generateSessionId();
       const sessionData = {
         userId,
         sessionId,
@@ -87,25 +87,29 @@ class SessionService {
         }
       };
 
-      const sessionKey = this.getSessionKey(userId);
-      const sessionIdKey = this.getSessionIdKey(sessionId);
-      const userSessionsKey = this.getUserSessionsKey(userId);
-      const activeSessionKey = this.getActiveSessionKey(userId);
+      const sessionKey = SessionService.getSessionKey(userId);
+      const sessionIdKey = SessionService.getSessionIdKey(sessionId);
+      const userSessionsKey = SessionService.getUserSessionsKey(userId);
+      const activeSessionKey = SessionService.getActiveSessionKey(userId);
 
       // 세션 데이터 저장
-      const saved = await this.setJson(sessionKey, sessionData, this.SESSION_TTL);
+      const saved = await SessionService.setJson(sessionKey, sessionData, SessionService.SESSION_TTL);
       if (!saved) {
         throw new Error('세션 데이터 저장에 실패했습니다.');
       }
 
-      // 세션 ID 매핑 저장 - 문자열 값은 직접 저장
-      await redisClient.setEx(sessionIdKey, this.SESSION_TTL, userId.toString());
-      await redisClient.setEx(userSessionsKey, this.SESSION_TTL, sessionId);
-      await redisClient.setEx(activeSessionKey, this.SESSION_TTL, sessionId);
+      // 세션 ID 매핑 저장
+      await Promise.all([
+        redisClient.set(sessionIdKey, userId.toString(), { ttl: SessionService.SESSION_TTL }),
+        redisClient.set(userSessionsKey, sessionId, { ttl: SessionService.SESSION_TTL }),
+        redisClient.set(activeSessionKey, sessionId, { ttl: SessionService.SESSION_TTL })
+      ]);
 
+
+      console.log(`!!써니!! - Session created for userId: ${userId}, sessionId: ${sessionId}`);
       return {
         sessionId,
-        expiresIn: this.SESSION_TTL,
+        expiresIn: SessionService.SESSION_TTL,
         sessionData
       };
 
@@ -126,7 +130,7 @@ class SessionService {
       }
 
       // 활성 세션 확인
-      const activeSessionKey = this.getActiveSessionKey(userId);
+      const activeSessionKey = SessionService.getActiveSessionKey(userId);
       const activeSessionId = await redisClient.get(activeSessionKey);
 
       if (!activeSessionId || activeSessionId !== sessionId) {
@@ -185,6 +189,8 @@ class SessionService {
         redisClient.expire(this.getSessionIdKey(sessionId), this.SESSION_TTL)
       ]);
 
+
+      console.log(`Session validated for userId: ${userId}, sessionId: ${sessionId}`);
       return {
         isValid: true,
         session: sessionData
