@@ -22,7 +22,8 @@ const corsOptions = {
     'http://localhost:3000',
     'https://localhost:3000',
     'http://0.0.0.0:3000',
-    'https://0.0.0.0:3000'
+    'https://0.0.0.0:3000',
+    'http://13.209.20.177:3000'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
