@@ -139,6 +139,16 @@ class RedisClient {
     }
   }
 
+  async ttl(key) {
+    try {
+      await this.connect();
+      return await this.client.ttl(key); // TTL 확인 추가
+    } catch (error) {
+      console.error("Redis ttl error:", error);
+      throw error;
+    }
+  }
+
 }
 
 module.exports = new RedisClient();
