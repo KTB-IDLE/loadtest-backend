@@ -1,13 +1,14 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { jwtSecret } = require('../config/keys');
+const UserService = require('../services/userService');
 const SessionService = require('../services/sessionService');
+
 
 const authController = {
   async register(req, res) {
-    try {
-      console.log('Register request received:', req.body);
-      
+    try {  
       const { name, email, password } = req.body;
 
       // Input validation
@@ -33,7 +34,7 @@ const authController = {
       }
       
       // Check existing user
-      const existingUser = await User.findOne({ email });
+      const existingUser = await UserService.getUserByEmail(email);
       if (existingUser) {
         return res.status(409).json({
           success: false,
@@ -41,15 +42,10 @@ const authController = {
         });
       }
       
-      // Create user
-      const user = new User({
-        name,
-        email,
-        password
-      });
-
-      await user.save();
-      console.log('User created:', user._id);
+      // 새 사용자 생성
+      const user = await UserService.createUser({ name, email, password });
+      
+      console.log('사용자 생성됨 : UserService.createUser, userId : ', user._id);
 
       // Create session with metadata
       const sessionInfo = await SessionService.createSession(user._id, {
@@ -60,10 +56,10 @@ const authController = {
       });
       
       if (!sessionInfo || !sessionInfo.sessionId) {
-        throw new Error('Session creation failed');
+        throw new Error('세션 생성 실패');
       }
 
-      // Generate token with additional claims
+      // JWT 토큰 생성
       const token = jwt.sign(
         { 
           user: { id: user._id },
@@ -73,7 +69,6 @@ const authController = {
         jwtSecret,
         { 
           expiresIn: '24h',
-          algorithm: 'HS256'
         }
       );
 
@@ -111,7 +106,7 @@ const authController = {
     try {
       const { email, password } = req.body;
 
-      // Input validation
+      // 입력 검증
       if (!email || !password) {
         return res.status(400).json({
           success: false,
@@ -120,7 +115,7 @@ const authController = {
       }
 
       // 사용자 조회
-      const user = await User.findOne({ email }).select('+password');
+      const user = await UserService.getUserByEmailWithPassword(email);
       if (!user) {
         return res.status(401).json({
           success: false,
@@ -129,7 +124,7 @@ const authController = {
       }
 
       // 비밀번호 확인
-      const isMatch = await user.matchPassword(password);
+      const isMatch = await bcrypt.compare(password, user.password)
       if (!isMatch) {
         return res.status(401).json({
           success: false,
