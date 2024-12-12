@@ -24,7 +24,9 @@ exports.processFileForRAG = async ({ bucket, key }) => {
 
     // S3에서 파일 가져오기
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+    console.log("S3 command = ", command);
     const response = await s3Client.send(command);
+    console.log("S3 response = ", response);
 
     // PDF 파일 처리
     if (key.endsWith(".pdf")) {

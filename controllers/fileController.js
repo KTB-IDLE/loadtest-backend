@@ -114,9 +114,8 @@ exports.uploadFile = async (req, res) => {
       Body: req.file.buffer,
       ContentType: req.file.mimetype,
       Metadata: {
-        originalName: req.file.originalname,
+        originalName: encodeURIComponent(req.file.originalname), // 인코딩
       },
-      ACL: "public-read", // 필요에 따라 'public-read'로 변경 가능
     };
 
     // AWS SDK v3의 lib-storage를 사용한 업로드
@@ -192,6 +191,8 @@ exports.downloadFile = async (req, res) => {
 
     // 파일 메타데이터 가져오기
     const headData = await s3.send(new HeadObjectCommand(getParams));
+
+    console.log("S3 headData = ", headData);
 
     res.set({
       "Content-Type": headData.ContentType,

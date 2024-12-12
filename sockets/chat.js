@@ -7,20 +7,28 @@ const { jwtSecret } = require("../config/keys");
 const redisClient = require("../utils/redisClient");
 const SessionService = require("../services/sessionService");
 const aiService = require("../services/aiService");
+const userService = require("../services/userService");
 
 const { Kafka, Partitioners } = require("kafkajs");
 
-const USER_PREFIX = "user:";
-const ROOM_PREFIX = "room:";
+class UserCache {
+  static USER_CACHE_PREFIX = "user:";
+  static USER_SOCKET_CACHE_PREFIX = "usersocket:";
+  static CACHE_TTL = 3600; // 1 hour
 
-// Redis 키 생성 유틸리티
-const getUserKey = (userId) => `${USER_PREFIX}${userId}`;
-const getRoomKey = (roomId) => `${ROOM_PREFIX}${roomId}`;
+  static generateCacheKey(userId) {
+    return `${this.USER_CACHE_PREFIX}${userId}`;
+  }
+
+  static generateUserSocketCacheKey(userId) {
+    return `${this.USER_CACHE_PREFIX}${userId}`;
+  }
+}
 
 const kafka = new Kafka({
   clientId: "chat-app",
-  brokers: ["10.0.31.246:9092", "10.0.214.65:9092", "10.0.189.236:9092"], // 모든 브로커 주소 추가
-  // brokers: ["localhost:9092"],
+  // brokers: ["43.202.211.154:9092", "52.79.247.116:9092", "54.180.157.144:9092"], // 모든 브로커 주소 추가
+  brokers: ["localhost:9092"],
   createPartitioner: Partitioners.LegacyPartitioner,
   requestTimeout: 30000,
   connectionTimeout: 10000,
@@ -101,16 +109,18 @@ module.exports = function (io) {
 
   const loadMessages = async (socket, roomId, before, limit = BATCH_SIZE) => {
     const redisKey = `chat:${roomId}`;
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error("Message loading timed out"));
-      }, MESSAGE_LOAD_TIMEOUT);
-    });
+    console.log("redisKey = ", redisKey);
+    // const timeoutPromise = new Promise((_, reject) => {
+    //   setTimeout(() => {
+    //     reject(new Error("Message loading timed out"));
+    //   }, MESSAGE_LOAD_TIMEOUT);
+    // });
 
     try {
       // Redis에서 메시지 로드
       let cachedMessages = await redisClient.lRange(redisKey, 0, -1);
-      cachedMessages = cachedMessages.map((msg) => JSON.parse(msg)); // JSON 파싱
+      // cachedMessages = cachedMessages.map((msg) => JSON.parse(msg)); // JSON 파싱
+      console.log("cachedMessages ", cachedMessages);
 
       // 타임스탬프 필터링
       if (before) {
@@ -130,6 +140,8 @@ module.exports = function (io) {
         const messageIds = sortedMessages.map((msg) => msg._id);
         await redisClient.lTrim(redisKey, 0, -1); // 필요시 Redis 데이터 관리
       }
+
+      console.log("hasMore = ", hasMore);
 
       return {
         messages: sortedMessages,
@@ -199,23 +211,6 @@ module.exports = function (io) {
     }
   };
 
-  const saveMessage = async (roomId, message) => {
-    try {
-      // MongoDB에 메시지 저장
-      const newMessage = await new Message(message).save();
-
-      // Redis에 메시지 추가
-      const redisKey = `chat:${roomId}`;
-      await redisClient.lpush(redisKey, JSON.stringify(newMessage));
-      await redisClient.ltrim(redisKey, 0, BATCH_SIZE - 1); // 최대 BATCH_SIZE 유지
-
-      return newMessage;
-    } catch (error) {
-      console.error("Save message error:", error);
-      throw error;
-    }
-  };
-
   // 재시도 로직을 포함한 메시지 로드 함수
   const loadMessagesWithRetry = async (
     socket,
@@ -231,6 +226,7 @@ module.exports = function (io) {
       }
 
       const result = await loadMessages(socket, roomId, before);
+      console.log("JIWON result = ", result);
       messageLoadRetries.delete(retryKey);
       return result;
     } catch (error) {
@@ -300,6 +296,7 @@ module.exports = function (io) {
   };
 
   // 미들웨어: 소켓 연결 시 인증 처리
+  // 해야할 것
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
@@ -363,7 +360,66 @@ module.exports = function (io) {
     }
   });
 
-  io.on("connection", (socket) => {
+  // io.on("connection`", async (socket) => {
+  //   logDebug("socket connected", {
+  //     socketId: socket.id,
+  //     userId: socket.user?.id,
+  //     userName: socket.user?.name,
+  //   });
+
+  //   if (socket.user) {
+  //     console.log("connection1");
+  //     const userKey = UserCache.generateCacheKey(socket.user.id);
+  //     console.log("connection2");
+
+  //     try {
+  //       // Redis에서 이전 소켓 ID 확인
+  //       const previousSocketId = await redisClient.get(userKey);
+  //       console.log("connection3");
+
+  //       if (previousSocketId && previousSocketId !== socket.id) {
+  //         const previousSocket = io.sockets.sockets.get(previousSocketId);
+  //         console.log("connection4");
+  //         if (previousSocket) {
+  //           // 이전 연결에 중복 로그인 알림
+  //           previousSocket.emit("duplicate_login", {
+  //             type: "new_login_attempt",
+  //             deviceInfo: socket.handshake.headers["user-agent"],
+  //             ipAddress: socket.handshake.address,
+  //             timestamp: Date.now(),
+  //           });
+
+  //           // 이전 연결 종료
+  //           setTimeout(() => {
+  //             previousSocket.emit("session_ended", {
+  //               reason: "duplicate_login",
+  //               message: "다른 기기에서 로그인하여 현재 세션이 종료되었습니다.",
+  //             });
+  //             previousSocket.disconnect(true);
+  //           }, DUPLICATE_LOGIN_TIMEOUT);
+  //         }
+  //       }
+
+  //       // 새로운 연결 정보 Redis에 저장 (TTL: 1시간)
+  //       console.log("connection5");
+  //       const userSocketKey = UserCache.generateUserSocketCacheKey(
+  //         socket.user.id
+  //       );
+  //       console.log("connection6");
+  //       await redisClient.set(userSocketKey, socket.id, {
+  //         ttl: UserCache.CACHE_TTL,
+  //       });
+  //       console.log("connection7");
+  //       logDebug("User connection info saved in Redis", {
+  //         userKey,
+  //         socketId: socket.id,
+  //       });
+  //     } catch (error) {
+  //       console.error("Error managing user connection in Redis:", error);
+  //     }
+  //   }
+
+  io.on("connection", async (socket) => {
     logDebug("socket connected", {
       socketId: socket.id,
       userId: socket.user?.id,
@@ -372,8 +428,19 @@ module.exports = function (io) {
 
     if (socket.user) {
       // 이전 연결이 있는지 확인
-      const userKey = getUserKey(socket.user.id);
-      const previousSocketId = redisClient.get.get(userKey);
+
+      // Cache 에서 가져오기
+      let user = userService.getUserById(socket.user.id);
+      console.log("user", user);
+
+      // connectedUser Key 로 가져오기
+      // jiwon123
+      const previousSocketId = redisClient.get(
+        UserCache.generateUserSocketCacheKey(socket.user.id)
+      );
+
+      console.log("previousSocketId = ", previousSocketId);
+      // const previousSocketId = connectedUsers.get(socket.user.id);
       if (previousSocketId && previousSocketId !== socket.id) {
         const previousSocket = io.sockets.sockets.get(previousSocketId);
         if (previousSocket) {
@@ -397,7 +464,14 @@ module.exports = function (io) {
       }
 
       // 새로운 연결 정보 저장
-      connectedUsers.set(socket.user.id, socket.id);
+      // connectedUsers.set(socket.user.id, socket.id);
+      const userSocketKey = UserCache.generateUserSocketCacheKey(
+        socket.user.id
+      );
+      await redisClient.set(userSocketKey, socket.id);
+
+      const value = redisClient.get(userSocketKey);
+      console.log("value = ", value);
     }
 
     // 이전 메시지 받기
@@ -435,6 +509,17 @@ module.exports = function (io) {
         });
 
         // 로딩 완료 알림 및 결과 전송
+        result.messages = result.messages
+          .map((msg) => {
+            try {
+              return JSON.parse(msg); // JSON 문자열을 객체로 변환
+            } catch (error) {
+              console.error("Failed to parse message:", msg);
+              return null; // 파싱 실패 시 null 반환
+            }
+          })
+          .filter(Boolean); // null 값 제거
+
         socket.emit("previousMessagesLoaded", result);
       } catch (error) {
         console.error("Fetch previous messages error:", error);
@@ -643,13 +728,11 @@ module.exports = function (io) {
               },
             });
 
-            // Kafka Producer에 전송
-            console.log("kafka 에 메시지 전송 성공");
-            await kafkaProducer.send({
-              topic: "chat-messages",
-              messages: [{ value: JSON.stringify(message) }],
-            });
-
+            await message.save();
+            await message.populate([
+              { path: "sender", select: "name email profileImage" },
+              { path: "file", select: "filename originalname mimetype size" },
+            ]);
             break;
 
           case "text":
@@ -679,7 +762,8 @@ module.exports = function (io) {
         }
 
         io.to(room).emit("message", message);
-        await redisClient.saveChatMessage(room, content);
+        await redisClient.saveChatMessage(room, message);
+        console.log("jiwon content = ", message);
 
         // AI 멘션이 있는 경우 AI 응답 생성
         if (aiMentions.length > 0) {
@@ -786,6 +870,7 @@ module.exports = function (io) {
     });
 
     // 연결 해제 처리
+    // jiwon2
     socket.on("disconnect", async (reason) => {
       if (!socket.user) return;
 
