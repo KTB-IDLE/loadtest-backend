@@ -122,6 +122,25 @@ class RedisClient {
     }
   }
 
+  async scanAllKeys(pattern) {
+    let cursor = "0";
+    let keys = [];
+
+    do {
+      const [nextCursor, foundKeys] = await this.client.scan(
+        cursor,
+        "MATCH",
+        pattern,
+        "COUNT",
+        100
+      );
+      cursor = nextCursor;
+      keys = keys.concat(foundKeys);
+    } while (cursor !== "0");
+
+    return keys;
+  }
+
   async lTrim(key, start, end) {
     try {
       await this.connect();
