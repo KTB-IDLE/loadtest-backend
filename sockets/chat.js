@@ -360,65 +360,6 @@ module.exports = function (io) {
     }
   });
 
-  // io.on("connection`", async (socket) => {
-  //   logDebug("socket connected", {
-  //     socketId: socket.id,
-  //     userId: socket.user?.id,
-  //     userName: socket.user?.name,
-  //   });
-
-  //   if (socket.user) {
-  //     console.log("connection1");
-  //     const userKey = UserCache.generateCacheKey(socket.user.id);
-  //     console.log("connection2");
-
-  //     try {
-  //       // Redis에서 이전 소켓 ID 확인
-  //       const previousSocketId = await redisClient.get(userKey);
-  //       console.log("connection3");
-
-  //       if (previousSocketId && previousSocketId !== socket.id) {
-  //         const previousSocket = io.sockets.sockets.get(previousSocketId);
-  //         console.log("connection4");
-  //         if (previousSocket) {
-  //           // 이전 연결에 중복 로그인 알림
-  //           previousSocket.emit("duplicate_login", {
-  //             type: "new_login_attempt",
-  //             deviceInfo: socket.handshake.headers["user-agent"],
-  //             ipAddress: socket.handshake.address,
-  //             timestamp: Date.now(),
-  //           });
-
-  //           // 이전 연결 종료
-  //           setTimeout(() => {
-  //             previousSocket.emit("session_ended", {
-  //               reason: "duplicate_login",
-  //               message: "다른 기기에서 로그인하여 현재 세션이 종료되었습니다.",
-  //             });
-  //             previousSocket.disconnect(true);
-  //           }, DUPLICATE_LOGIN_TIMEOUT);
-  //         }
-  //       }
-
-  //       // 새로운 연결 정보 Redis에 저장 (TTL: 1시간)
-  //       console.log("connection5");
-  //       const userSocketKey = UserCache.generateUserSocketCacheKey(
-  //         socket.user.id
-  //       );
-  //       console.log("connection6");
-  //       await redisClient.set(userSocketKey, socket.id, {
-  //         ttl: UserCache.CACHE_TTL,
-  //       });
-  //       console.log("connection7");
-  //       logDebug("User connection info saved in Redis", {
-  //         userKey,
-  //         socketId: socket.id,
-  //       });
-  //     } catch (error) {
-  //       console.error("Error managing user connection in Redis:", error);
-  //     }
-  //   }
-
   io.on("connection", async (socket) => {
     logDebug("socket connected", {
       socketId: socket.id,
