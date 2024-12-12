@@ -42,12 +42,13 @@ class AIService {
 1. 명확하고 이해하기 쉬운 언어로 답변하세요.
 2. 정확하지 않은 정보는 제공하지 마세요.
 3. 필요한 경우 예시를 들어 설명하세요.
-4. ${aiPersona.tone}을 유지하세요.`;
+4. 간략하게 답변해주세요.
+5. ${aiPersona.tone}을 유지하세요.`;
 
       callbacks.onStart();
 
       const response = await this.openaiClient.post('/chat/completions', {
-        model: 'gpt-4',
+        model: 'gpt-4o-2024-11-20',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message }
