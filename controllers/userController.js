@@ -1,105 +1,13 @@
 const bcrypt = require('bcryptjs');
-const User = require('../models/User');
+const UserService = require('../services/userService'); // UserService로 변경
 const { upload } = require('../middleware/upload');
 const path = require('path');
 const fs = require('fs').promises;
 
-// 회원가입
-exports.register = async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
-
-    // 입력값 검증
-    const validationErrors = [];
-    
-    if (!name || name.trim().length === 0) {
-      validationErrors.push({
-        field: 'name',
-        message: '이름을 입력해주세요.'
-      });
-    } else if (name.length < 2) {
-      validationErrors.push({
-        field: 'name',
-        message: '이름은 2자 이상이어야 합니다.'
-      });
-    }
-
-    if (!email) {
-      validationErrors.push({
-        field: 'email',
-        message: '이메일을 입력해주세요.'
-      });
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      validationErrors.push({
-        field: 'email',
-        message: '올바른 이메일 형식이 아닙니다.'
-      });
-    }
-
-    if (!password) {
-      validationErrors.push({
-        field: 'password',
-        message: '비밀번호를 입력해주세요.'
-      });
-    } else if (password.length < 6) {
-      validationErrors.push({
-        field: 'password',
-        message: '비밀번호는 6자 이상이어야 합니다.'
-      });
-    }
-
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        errors: validationErrors
-      });
-    }
-
-    // 사용자 중복 확인
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: '이미 가입된 이메일입니다.'
-      });
-    }
-
-    // 비밀번호 암호화 및 사용자 생성
-    const newUser = new User({ 
-      name, 
-      email, 
-      password,
-      profileImage: '' // 기본 프로필 이미지 없음
-    });
-
-    const salt = await bcrypt.genSalt(10);
-    newUser.password = await bcrypt.hash(password, salt);
-    await newUser.save();
-
-    res.status(201).json({
-      success: true,
-      message: '회원가입이 완료되었습니다.',
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        profileImage: newUser.profileImage
-      }
-    });
-
-  } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({
-      success: false,
-      message: '회원가입 처리 중 오류가 발생했습니다.'
-    });
-  }
-};
-
 // 프로필 조회
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await UserService.getUserById(req.user.id); // 🔄 기존 User.findById를 UserService.getUserById로 교체하여 캐싱 적용
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -138,27 +46,25 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: '사용자를 찾을 수 없습니다.'
-      });
-    }
-
-    user.name = name.trim();
-    await user.save();
-
-    res.json({
-      success: true,
-      message: '프로필이 업데이트되었습니다.',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        profileImage: user.profileImage
-      }
+  // 🔄 기존 User.findById를 UserService.updateUser로 변경하여 캐싱 적용
+  const updatedUser = await UserService.updateUser(req.user.id, { name: name.trim() });
+  if (!updatedUser) {
+    return res.status(404).json({
+      success: false,
+      message: '사용자를 찾을 수 없습니다.'
     });
+ }
+
+ res.json({
+   success: true,
+   message: '프로필이 업데이트되었습니다.',
+   user: {
+     id: updatedUser._id,
+     name: updatedUser.name,
+     email: updatedUser.email,
+     profileImage: updatedUser.profileImage
+   }
+ });
 
   } catch (error) {
     console.error('Update profile error:', error);
@@ -202,7 +108,8 @@ exports.uploadProfileImage = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.user.id);
+    // 🔄 기존 User.findById를 UserService.getUserById로 변경하여 캐싱 적용
+    const user = await UserService.getUserById(req.user.id);
     if (!user) {
       // 업로드된 파일 삭제
       await fs.unlink(req.file.path);
@@ -225,13 +132,12 @@ exports.uploadProfileImage = async (req, res) => {
 
     // 새 이미지 경로 저장
     const imageUrl = `/uploads/${req.file.filename}`;
-    user.profileImage = imageUrl;
-    await user.save();
+    const updatedUser = await UserService.updateUser(req.user.id, { profileImage: imageUrl }); // 🔄 캐싱 업데이트
 
     res.json({
       success: true,
       message: '프로필 이미지가 업데이트되었습니다.',
-      imageUrl: user.profileImage
+      imageUrl: updatedUser.profileImage
     });
 
   } catch (error) {
@@ -254,7 +160,7 @@ exports.uploadProfileImage = async (req, res) => {
 // 프로필 이미지 삭제
 exports.deleteProfileImage = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await UserService.getUserById(req.user.id); // 🔄 캐싱된 데이터 활용
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -271,8 +177,7 @@ exports.deleteProfileImage = async (req, res) => {
         console.error('Profile image delete error:', error);
       }
 
-      user.profileImage = '';
-      await user.save();
+      await UserService.updateUser(req.user.id, { profileImage: '' }); // 🔄 캐싱 업데이트
     }
 
     res.json({
@@ -292,7 +197,7 @@ exports.deleteProfileImage = async (req, res) => {
 // 회원 탈퇴
 exports.deleteAccount = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await UserService.getUserById(req.user.id); // 🔄 캐싱된 데이터 활용
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -311,7 +216,7 @@ exports.deleteAccount = async (req, res) => {
       }
     }
 
-    await user.deleteOne();
+    await UserService.deleteUser(req.user.id); // 🔄 deleteUser 메서드 추가하여 최적화
 
     res.json({
       success: true,
