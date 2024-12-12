@@ -50,16 +50,23 @@ const UserSchema = new mongoose.Schema({
 function encryptEmail(email) {
   if (!email) return null;
   try {
+    console.log("jiwon email", email);
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(encryptionKey, 'hex'), iv);
-    let encrypted = cipher.update(email, 'utf8', 'hex');
-    encrypted += cipher.final('hex');
-    return iv.toString('hex') + ':' + encrypted;
+    const cipher = crypto.createCipheriv(
+      "aes-256-cbc",
+      Buffer.from(encryptionKey, "hex"),
+      iv
+    );
+    let encrypted = cipher.update(email, "utf8", "hex");
+    encrypted += cipher.final("hex");
+    console.log("jiwon encrypted", encrypted);
+    return iv.toString("hex") + ":" + encrypted;
   } catch (error) {
-    console.error('Email encryption error:', error);
+    console.error("Email encryption error:", error);
     return null;
   }
 }
+
 
 // 비밀번호 해싱 및 이메일 암호화 미들웨어
 UserSchema.pre('save', async function(next) {
