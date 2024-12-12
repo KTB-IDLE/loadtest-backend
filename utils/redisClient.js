@@ -5,19 +5,20 @@ class RedisClient {
   constructor() {
     this.client = null;
     this.isCluster = false; // 클러스터 모드인지 여부
+    this.connected = false;
   }
 
   async connect() {
-    if (this.client) {
+    if (this.connected && this.client) {
       return this.client;
     }
 
     try {
       console.log("Connecting to Redis...");
 
-      // 환경 변수에 따라 Redis 클라이언트 설정
-      if (process.env.NODE_ENV === "production" && redisClusterNodes) {
-        console.log("Using Redis Cluster for production...");
+      if (process.env.NODE_ENV === "production" && redisClusterNodes?.length) {
+        // Redis 클러스터 모드
+        console.log("Using Redis Cluster...");
         this.client = new Redis.Cluster(redisClusterNodes, {
           redisOptions: {
             retryStrategy: (times) => {
@@ -33,7 +34,8 @@ class RedisClient {
         });
         this.isCluster = true;
       } else {
-        console.log("Using single-node Redis for development...");
+        // 단일 노드 Redis 모드
+        console.log("Using single-node Redis...");
         this.client = new Redis({
           host: redisHost,
           port: redisPort,
@@ -50,30 +52,25 @@ class RedisClient {
 
       this.client.on("connect", () => {
         console.log("Redis Client Connected");
+        this.connected = true;
       });
 
       this.client.on("error", (err) => {
         console.error("Redis Client Error:", err);
+        this.connected = false;
       });
 
       return this.client;
     } catch (error) {
       console.error("Redis connection error:", error);
+      this.connected = false;
       throw error;
     }
-  }
-
-  pipeline() {
-    if (this.isCluster) {
-      return this.client.pipeline();
-    }
-    return this.client.pipeline(); // 단일 노드에서도 pipeline 지원
   }
 
   async set(key, value, options = {}) {
     try {
       await this.connect();
-
       const stringValue =
         typeof value === "object" ? JSON.stringify(value) : String(value);
 
@@ -91,18 +88,16 @@ class RedisClient {
     try {
       await this.connect();
       const value = await this.client.get(key);
-      
+
       if (!value) return null;
-  
-      // JSON 파싱 시도
+
       try {
-        return JSON.parse(value);
+        return JSON.parse(value); // JSON 파싱 시도
       } catch {
-        // JSON이 아닐 경우 원본 문자열 반환
-        return value;
+        return value; // JSON 파싱 실패 시 원본 문자열 반환
       }
     } catch (error) {
-      console.error('Redis get error:', error);
+      console.error("Redis get error:", error);
       throw error;
     }
   }
@@ -117,11 +112,71 @@ class RedisClient {
     }
   }
 
+  async lRange(key, start, end) {
+    try {
+      await this.connect();
+      return await this.client.lrange(key, start, end);
+    } catch (error) {
+      console.error("Redis lRange error:", error);
+      throw error;
+    }
+  }
+
+  async lTrim(key, start, end) {
+    try {
+      await this.connect();
+      return await this.client.ltrim(key, start, end);
+    } catch (error) {
+      console.error("Redis lTrim error:", error);
+      throw error;
+    }
+  }
+
+  async saveChatMessage(chatRoomId, message) {
+    try {
+      await this.connect();
+      const key = `chat:${chatRoomId}`;
+      const messageString =
+        typeof message === "object" ? JSON.stringify(message) : message;
+
+      await this.client.lpush(key, messageString); // 메시지를 리스트에 저장
+      await this.lTrim(key, 0, 49); // 최대 50개 유지
+      console.log(`Message saved in Redis (key: ${key})`);
+    } catch (error) {
+      console.error("Redis saveChatMessage error:", error);
+      throw error;
+    }
+  }
+
+  async getRecentChatMessages(chatRoomId, count = 50) {
+    try {
+      await this.connect();
+      const key = `chat:${chatRoomId}`;
+      const messages = await this.client.lrange(key, 0, count - 1);
+
+      return messages.map((msg) => {
+        try {
+          return JSON.parse(msg); // JSON으로 변환
+        } catch {
+          return msg; // JSON 변환 실패 시 원본 반환
+        }
+      });
+    } catch (error) {
+      console.error("Redis getRecentChatMessages error:", error);
+      throw error;
+    }
+  }
+
+  pipeline() {
+    return this.client.pipeline();
+  }
+
   async quit() {
     if (this.client) {
       try {
         await this.client.quit();
         console.log("Redis connection closed successfully");
+        this.connected = false;
       } catch (error) {
         console.error("Redis quit error:", error);
         throw error;
@@ -138,17 +193,6 @@ class RedisClient {
       throw error;
     }
   }
-
-  async ttl(key) {
-    try {
-      await this.connect();
-      return await this.client.ttl(key); // TTL 확인 추가
-    } catch (error) {
-      console.error("Redis ttl error:", error);
-      throw error;
-    }
-  }
-
 }
 
 module.exports = new RedisClient();
