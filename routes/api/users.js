@@ -5,8 +5,6 @@ const auth = require('../../middleware/auth');
 const { upload } = require('../../middleware/upload');
 
 // 공개 라우트
-// 회원가입
-router.post('/register', userController.register);
 
 // 인증이 필요한 라우트
 // 프로필 조회
