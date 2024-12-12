@@ -27,8 +27,8 @@ class UserCache {
 
 const kafka = new Kafka({
   clientId: "chat-app",
-  // brokers: ["43.202.211.154:9092", "52.79.247.116:9092", "54.180.157.144:9092"], // 모든 브로커 주소 추가
-  brokers: ["localhost:9092"],
+  brokers: ["43.202.211.154:9092", "52.79.247.116:9092", "54.180.157.144:9092"], // 모든 브로커 주소 추가
+  // brokers: ["localhost:9092"],
   createPartitioner: Partitioners.LegacyPartitioner,
   requestTimeout: 30000,
   connectionTimeout: 10000,
