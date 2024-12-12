@@ -139,6 +139,17 @@ class UserService {
   static async clearUserCache(userId) {
     await redisClient.del(this.generateCacheKey(userId));
   }
+
+  static async deleteUser(userId) {
+    try {
+      await User.deleteOne({ _id: userId });
+      await this.clearUserCache(userId); // 캐시 제거
+      console.log('User and cache deleted for userId:', userId);
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = UserService;
