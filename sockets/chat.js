@@ -49,17 +49,10 @@ module.exports = function (io) {
 
   const loadMessages = async (socket, roomId, before, limit = BATCH_SIZE) => {
     const redisKey = `chat:${roomId}`;
-    console.log("redisKey = ", redisKey);
-    // const timeoutPromise = new Promise((_, reject) => {
-    //   setTimeout(() => {
-    //     reject(new Error("Message loading timed out"));
-    //   }, MESSAGE_LOAD_TIMEOUT);
-    // });
 
     try {
       // Redis에서 메시지 로드
       let cachedMessages = await redisClient.lRange(redisKey, 0, -1);
-      // cachedMessages = cachedMessages.map((msg) => JSON.parse(msg)); // JSON 파싱
 
       // 타임스탬프 필터링
       if (before) {
@@ -651,6 +644,11 @@ module.exports = function (io) {
                 originalName: file.originalname,
               },
             });
+            await message.save();
+            await message.populate([
+              { path: "sender", select: "name email profileImage" },
+              { path: "file", select: "filename originalname mimetype size" },
+            ]);
 
             break;
 
@@ -668,6 +666,11 @@ module.exports = function (io) {
               timestamp: new Date(),
               reactions: {},
             });
+            await message.save();
+            await message.populate([
+              { path: "sender", select: "name email profileImage" },
+              { path: "file", select: "filename originalname mimetype size" },
+            ]);
 
             break;
 
@@ -676,11 +679,7 @@ module.exports = function (io) {
         }
 
         io.to(room).emit("message", message);
-        await message.save();
-        await message.populate([
-          { path: "sender", select: "name email profileImage" },
-          { path: "file", select: "filename originalname mimetype size" },
-        ]);
+
         await redisClient.saveChatMessage(room, message);
         console.log("jiwon content = ", message);
 
@@ -959,10 +958,6 @@ module.exports = function (io) {
         }
 
         const message = await Message.findById(messageId);
-
-        console.log("리액션 처리 = ", messageId);
-        console.log("리액션 처리 = ", reaction);
-        console.log("리액션 처리 = ", type);
         if (!message) {
           throw new Error("메시지를 찾을 수 없습니다.");
         }
